@@ -23,6 +23,7 @@ public class IisMonitorService : IIisMonitor
     private List<AppPoolInfo> _cachedAppPools = new();
     private List<WebsiteInfo> _cachedSites = new();
     private readonly List<ProcessMapping> _historicalMappings = new();
+    private bool _hasLoggedAccessWarning;
 
     public IisMonitorService(ILogger<IisMonitorService> logger)
     {
@@ -80,9 +81,42 @@ public class IisMonitorService : IIisMonitor
                 UpdateHistoricalMapping(mapping);
             }
         }
+        catch (UnauthorizedAccessException)
+        {
+            if (!_hasLoggedAccessWarning)
+            {
+                _hasLoggedAccessWarning = true;
+                _logger.LogWarning("Access denied reading IIS worker processes (redirection.config). " +
+                                   "IIS configuration requires administrative privileges. Run as Administrator, " +
+                                   "install as a Windows Service (LocalSystem), or enable Simulation mode in appsettings.json for local testing.");
+            }
+
+            // Fallback approach: appcmd list wp /xml
+            try
+            {
+                var appCmdMappings = await GetWorkerProcessesViaAppCmdAsync(cancellationToken);
+                foreach (var (pid, appPool) in appCmdMappings)
+                {
+                    var sites = await GetWebsitesForAppPoolAsync(appPool, cancellationToken);
+                    var mapping = new ProcessMapping
+                    {
+                        ProcessId = pid,
+                        AppPoolName = appPool,
+                        StartTimeUtc = DateTime.UtcNow,
+                        AssociatedWebsites = sites.Select(s => s.SiteName).ToList()
+                    };
+                    liveMappings.Add(mapping);
+                    UpdateHistoricalMapping(mapping);
+                }
+            }
+            catch
+            {
+                // appcmd also failed (e.g. WAS stopped or unelevated)
+            }
+        }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to read worker processes via ServerManager. Attempting appcmd fallback.");
+            _logger.LogWarning("Could not enumerate IIS worker processes via ServerManager: {Message}. Attempting appcmd fallback.", ex.Message);
 
             // Fallback approach: appcmd list wp /xml
             try
@@ -104,7 +138,7 @@ public class IisMonitorService : IIisMonitor
             }
             catch (Exception fallbackEx)
             {
-                _logger.LogError(fallbackEx, "Failed to read worker processes via appcmd fallback.");
+                _logger.LogDebug(fallbackEx, "Failed to read worker processes via appcmd fallback.");
             }
         }
 
@@ -220,9 +254,19 @@ public class IisMonitorService : IIisMonitor
 
                 _logger.LogDebug("Refreshed IIS configuration: {PoolCount} pools, {SiteCount} sites.", pools.Count, sites.Count);
             }
+            catch (UnauthorizedAccessException)
+            {
+                if (!_hasLoggedAccessWarning)
+                {
+                    _hasLoggedAccessWarning = true;
+                    _logger.LogWarning("Access denied reading IIS configuration files (redirection.config). " +
+                                       "IIS configuration requires administrative privileges. Run as Administrator, " +
+                                       "install as a Windows Service (LocalSystem), or enable Simulation mode in appsettings.json for local testing.");
+                }
+            }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Failed to refresh IIS configuration from ServerManager.");
+                _logger.LogWarning("Could not refresh IIS configuration from ServerManager: {Message}", ex.Message);
             }
         }, ct);
     }
