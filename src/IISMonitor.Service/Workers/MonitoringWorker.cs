@@ -127,6 +127,10 @@ public class MonitoringWorker : BackgroundService
 
         // 2. Collect Process Metrics
         var processes = await _processMetricsCollector.CollectAsync(ct);
+        var sortedProcesses = processes
+            .OrderByDescending(p => p.CpuPercent)
+            .ThenByDescending(p => p.PrivateBytes)
+            .ToList();
 
         // 3. Worker process mappings & AppPool metrics
         var mappings = await _iisMonitor.GetWorkerProcessMappingsAsync(ct);
@@ -147,10 +151,47 @@ public class MonitoringWorker : BackgroundService
                     WorkingSetBytes = proc.WorkingSet,
                     ThreadCount = proc.ThreadCount,
                     HandleCount = proc.HandleCount,
-                    ProcessAgeSeconds = proc.UptimeSeconds
+                    ProcessAgeSeconds = proc.UptimeSeconds,
+                    State = "Running"
                 });
             }
         }
+
+        // Also ensure all configured IIS Application Pools are visible even if currently idle
+        try
+        {
+            var configuredPools = await _iisMonitor.GetAppPoolsAsync(ct);
+            foreach (var pool in configuredPools)
+            {
+                if (!appPoolMetrics.Any(a => string.Equals(a.AppPoolName, pool.Name, StringComparison.OrdinalIgnoreCase)))
+                {
+                    appPoolMetrics.Add(new AppPoolMetrics
+                    {
+                        AppPoolName = pool.Name,
+                        ProcessId = 0,
+                        CpuPercent = 0.0,
+                        TotalProcessorTimeMs = 0,
+                        PrivateMemoryBytes = 0,
+                        WorkingSetBytes = 0,
+                        ThreadCount = 0,
+                        HandleCount = 0,
+                        ProcessAgeSeconds = 0,
+                        State = string.IsNullOrWhiteSpace(pool.State) ? "Idle" : pool.State
+                    });
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "Could not fetch configured AppPools to augment metrics.");
+        }
+
+        var sortedAppPools = appPoolMetrics
+            .OrderByDescending(a => a.CpuPercent)
+            .ThenByDescending(a => a.ProcessId > 0 ? 1 : 0)
+            .ThenByDescending(a => a.PrivateMemoryBytes)
+            .ThenBy(a => a.AppPoolName)
+            .ToList();
 
         // 4. Process CPU through State Machine
         var transition = _stateMachine.ProcessCpuSample(serverMetrics.TotalCpuPercent);
@@ -165,15 +206,15 @@ public class MonitoringWorker : BackgroundService
             IsBaseline = !isIncidentActive,
             IsHighDetail = isIncidentActive,
             ServerMetrics = serverMetrics,
-            TopProcesses = processes.Take(10).ToList(),
-            AppPoolMetrics = appPoolMetrics
+            TopProcesses = sortedProcesses.Take(10).ToList(),
+            AppPoolMetrics = sortedAppPools
         };
 
         // 5. Store in circular buffer (rolling baseline)
         _baselineBuffer.Push(sample);
 
         // 6. Push to persistence channel
-        _writeChannel.Writer.TryWrite(new MetricWriteBatch(sample, processes.Take(10).ToList(), appPoolMetrics));
+        _writeChannel.Writer.TryWrite(new MetricWriteBatch(sample, sortedProcesses.Take(10).ToList(), sortedAppPools));
 
         // 7. If in incident, collect extended diagnostics and evaluate recovery
         if (isIncidentActive && activeIncidentId != null)

@@ -8,22 +8,22 @@ const Configuration = {
       if (!res.ok) return;
       const data = await res.json();
 
-      const m = data.Monitoring;
-      document.getElementById('cfg-normal-interval').value = m.NormalIntervalSeconds;
-      document.getElementById('cfg-incident-interval').value = m.IncidentIntervalSeconds;
-      document.getElementById('cfg-cpu-threshold').value = m.CpuThresholdPercent;
-      document.getElementById('cfg-critical-threshold').value = m.CriticalCpuThresholdPercent;
-      document.getElementById('cfg-recovery-threshold').value = m.RecoveryThresholdPercent;
-      document.getElementById('cfg-recovery-samples').value = m.RecoveryConsecutiveSamples;
+      const m = data.Monitoring ?? data.monitoring ?? {};
+      document.getElementById('cfg-normal-interval').value = m.NormalIntervalSeconds ?? m.normalIntervalSeconds ?? 30;
+      document.getElementById('cfg-incident-interval').value = m.IncidentIntervalSeconds ?? m.incidentIntervalSeconds ?? 5;
+      document.getElementById('cfg-cpu-threshold').value = m.CpuThresholdPercent ?? m.cpuThresholdPercent ?? 70;
+      document.getElementById('cfg-critical-threshold').value = m.CriticalCpuThresholdPercent ?? m.criticalCpuThresholdPercent ?? 90;
+      document.getElementById('cfg-recovery-threshold').value = m.RecoveryThresholdPercent ?? m.recoveryThresholdPercent ?? 60;
+      document.getElementById('cfg-recovery-samples').value = m.RecoveryConsecutiveSamples ?? m.recoveryConsecutiveSamples ?? 6;
 
-      const r = data.AutomaticRecovery;
-      document.getElementById('cfg-recovery-enabled').checked = r.Enabled;
-      document.getElementById('cfg-rec-critical-cpu').value = r.CriticalCpuThresholdPercent;
-      document.getElementById('cfg-rec-duration').value = r.MinimumCriticalDurationMinutes;
-      document.getElementById('cfg-rec-culprit-cpu').value = r.MinimumCulpritCpuPercent;
-      document.getElementById('cfg-rec-max-hour').value = r.MaxRestartsPerHour;
-      document.getElementById('cfg-rec-max-day').value = r.MaxRestartsPerDay;
-      document.getElementById('cfg-rec-cooldown').value = r.CooldownMinutes;
+      const r = data.AutomaticRecovery ?? data.automaticRecovery ?? {};
+      document.getElementById('cfg-recovery-enabled').checked = r.Enabled ?? r.enabled ?? false;
+      document.getElementById('cfg-rec-critical-cpu').value = r.CriticalCpuThresholdPercent ?? r.criticalCpuThresholdPercent ?? 90;
+      document.getElementById('cfg-rec-duration').value = r.MinimumCriticalDurationMinutes ?? r.minimumCriticalDurationMinutes ?? 8;
+      document.getElementById('cfg-rec-culprit-cpu').value = r.MinimumCulpritCpuPercent ?? r.minimumCulpritCpuPercent ?? 60;
+      document.getElementById('cfg-rec-max-hour').value = r.MaxRestartsPerHour ?? r.maxRestartsPerHour ?? 1;
+      document.getElementById('cfg-rec-max-day').value = r.MaxRestartsPerDay ?? r.maxRestartsPerDay ?? 3;
+      document.getElementById('cfg-rec-cooldown').value = r.CooldownMinutes ?? r.cooldownMinutes ?? 60;
     } catch (e) {
       console.error('Failed to load configuration', e);
     }

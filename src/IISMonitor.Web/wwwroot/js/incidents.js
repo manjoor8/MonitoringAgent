@@ -17,21 +17,29 @@ const Incidents = {
       }
 
       tbody.innerHTML = incidents.map(inc => {
-        const start = new Date(inc.StartTimeUtc).toLocaleString();
-        const duration = inc.DurationSeconds ? App.formatDuration(inc.DurationSeconds) : 'Active';
-        const isRec = inc.Status === 'Recovered' || inc.Status === 'AutoRecovered';
+        const id = inc.IncidentId ?? inc.incidentId ?? '';
+        const server = inc.ServerName ?? inc.serverName ?? '-';
+        const startRaw = inc.StartTimeUtc ?? inc.startTimeUtc;
+        const start = startRaw ? new Date(startRaw).toLocaleString() : '-';
+        const durationSec = inc.DurationSeconds ?? inc.durationSeconds;
+        const duration = durationSec ? App.formatDuration(durationSec) : 'Active';
+        const status = inc.Status ?? inc.status ?? 'Active';
+        const isRec = status === 'Recovered' || status === 'AutoRecovered';
+        const peakCpu = inc.PeakCpuPercent ?? inc.peakCpuPercent ?? 0;
+        const topProc = inc.TopProcessName ?? inc.topProcessName ?? '-';
+        const topPool = inc.TopAppPoolName ?? inc.topAppPoolName ?? '-';
 
         return `
           <tr>
-            <td class="mono"><strong><a href="#incident/${inc.IncidentId}" style="color:var(--accent-blue);text-decoration:none;">${inc.IncidentId}</a></strong></td>
-            <td>${inc.ServerName}</td>
+            <td class="mono"><strong><a href="#incident/${id}" style="color:var(--accent-blue);text-decoration:none;">${id}</a></strong></td>
+            <td>${server}</td>
             <td>${start}</td>
             <td class="mono">${duration}</td>
-            <td class="mono"><strong>${inc.PeakCpuPercent.toFixed(1)}%</strong></td>
-            <td>${inc.TopProcessName || '-'}</td>
-            <td>${inc.TopAppPoolName || '-'}</td>
+            <td class="mono"><strong>${peakCpu.toFixed(1)}%</strong></td>
+            <td>${topProc}</td>
+            <td>${topPool}</td>
             <td>
-              <span class="badge ${isRec ? 'badge-normal' : 'badge-critical'}">${inc.Status}</span>
+              <span class="badge ${isRec ? 'badge-normal' : 'badge-critical'}">${status}</span>
             </td>
           </tr>
         `;

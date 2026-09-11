@@ -34,8 +34,8 @@ public static class DashboardEndpoints
             var currentMem = latest?.ServerMetrics.CommittedMemoryPercent ?? 0;
             var availableMb = latest?.ServerMetrics.AvailableMemoryMb ?? 0;
 
-            var topProcesses = latest?.TopProcesses.Take(5).ToList() ?? new();
-            var topPools = latest?.AppPoolMetrics.Take(5).ToList() ?? new();
+            var topProcesses = latest?.TopProcesses.Take(10).ToList() ?? new();
+            var topPools = latest?.AppPoolMetrics.Take(10).ToList() ?? new();
 
             return Results.Ok(new
             {

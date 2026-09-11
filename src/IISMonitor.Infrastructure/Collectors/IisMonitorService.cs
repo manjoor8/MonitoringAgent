@@ -254,19 +254,41 @@ public class IisMonitorService : IIisMonitor
 
                 _logger.LogDebug("Refreshed IIS configuration: {PoolCount} pools, {SiteCount} sites.", pools.Count, sites.Count);
             }
-            catch (UnauthorizedAccessException)
+            catch (Exception ex)
             {
-                if (!_hasLoggedAccessWarning)
+                if (ex is UnauthorizedAccessException && !_hasLoggedAccessWarning)
                 {
                     _hasLoggedAccessWarning = true;
                     _logger.LogWarning("Access denied reading IIS configuration files (redirection.config). " +
-                                       "IIS configuration requires administrative privileges. Run as Administrator, " +
-                                       "install as a Windows Service (LocalSystem), or enable Simulation mode in appsettings.json for local testing.");
+                                       "IIS configuration requires administrative privileges. Falling back to appcmd.");
                 }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning("Could not refresh IIS configuration from ServerManager: {Message}", ex.Message);
+                else if (ex is not UnauthorizedAccessException)
+                {
+                    _logger.LogWarning("Could not refresh IIS configuration from ServerManager: {Message}. Attempting appcmd fallback.", ex.Message);
+                }
+
+                // Fallback to appcmd
+                try
+                {
+                    var fallbackPools = GetAppPoolsViaAppCmdAsync(ct).GetAwaiter().GetResult();
+                    var fallbackSites = GetSitesViaAppCmdAsync(ct).GetAwaiter().GetResult();
+
+                    if (fallbackPools.Count > 0 || fallbackSites.Count > 0)
+                    {
+                        lock (_cacheLock)
+                        {
+                            _cachedAppPools = fallbackPools;
+                            _cachedSites = fallbackSites;
+                            _lastConfigRefreshUtc = DateTime.UtcNow;
+                        }
+                        _logger.LogInformation("Refreshed IIS configuration via appcmd fallback: {PoolCount} pools, {SiteCount} sites.",
+                            fallbackPools.Count, fallbackSites.Count);
+                    }
+                }
+                catch (Exception fallbackEx)
+                {
+                    _logger.LogDebug(fallbackEx, "Failed to refresh IIS configuration via appcmd fallback.");
+                }
             }
         }, ct);
     }
@@ -303,13 +325,24 @@ public class IisMonitorService : IIisMonitor
         }
     }
 
+    private static string? FindAppCmdPath()
+    {
+        string system32 = Environment.GetFolderPath(Environment.SpecialFolder.System);
+        string path = Path.Combine(system32, "inetsrv", "appcmd.exe");
+        if (File.Exists(path)) return path;
+
+        string winDir = Environment.GetFolderPath(Environment.SpecialFolder.Windows);
+        string sysnative = Path.Combine(winDir, "sysnative", "inetsrv", "appcmd.exe");
+        if (File.Exists(sysnative)) return sysnative;
+
+        return null;
+    }
+
     private static async Task<List<(int Pid, string AppPool)>> GetWorkerProcessesViaAppCmdAsync(CancellationToken ct)
     {
         var list = new List<(int, string)>();
-        string appCmdPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "inetsrv", "appcmd.exe");
-
-        if (!File.Exists(appCmdPath))
-            return list;
+        string? appCmdPath = FindAppCmdPath();
+        if (appCmdPath == null) return list;
 
         var psi = new ProcessStartInfo
         {
@@ -340,6 +373,96 @@ public class IisMonitorService : IIisMonitor
                 }
             }
         }
+
+        return list;
+    }
+
+    private static async Task<List<AppPoolInfo>> GetAppPoolsViaAppCmdAsync(CancellationToken ct)
+    {
+        var list = new List<AppPoolInfo>();
+        string? appCmdPath = FindAppCmdPath();
+        if (appCmdPath == null) return list;
+
+        try
+        {
+            var psi = new ProcessStartInfo
+            {
+                FileName = appCmdPath,
+                Arguments = "list apppool /xml",
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                CreateNoWindow = true
+            };
+            using var proc = Process.Start(psi);
+            if (proc == null) return list;
+            string xml = await proc.StandardOutput.ReadToEndAsync(ct);
+            await proc.WaitForExitAsync(ct);
+
+            if (!string.IsNullOrWhiteSpace(xml))
+            {
+                var doc = XDocument.Parse(xml);
+                foreach (var el in doc.Descendants("APPPOOL"))
+                {
+                    string name = el.Attribute("APPPOOL.NAME")?.Value ?? string.Empty;
+                    string state = el.Attribute("state")?.Value ?? el.Attribute("State")?.Value ?? "Started";
+                    if (!string.IsNullOrEmpty(name))
+                    {
+                        list.Add(new AppPoolInfo
+                        {
+                            Name = name,
+                            State = state
+                        });
+                    }
+                }
+            }
+        }
+        catch { }
+
+        return list;
+    }
+
+    private static async Task<List<WebsiteInfo>> GetSitesViaAppCmdAsync(CancellationToken ct)
+    {
+        var list = new List<WebsiteInfo>();
+        string? appCmdPath = FindAppCmdPath();
+        if (appCmdPath == null) return list;
+
+        try
+        {
+            var psi = new ProcessStartInfo
+            {
+                FileName = appCmdPath,
+                Arguments = "list site /xml",
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                CreateNoWindow = true
+            };
+            using var proc = Process.Start(psi);
+            if (proc == null) return list;
+            string xml = await proc.StandardOutput.ReadToEndAsync(ct);
+            await proc.WaitForExitAsync(ct);
+
+            if (!string.IsNullOrWhiteSpace(xml))
+            {
+                var doc = XDocument.Parse(xml);
+                foreach (var el in doc.Descendants("SITE"))
+                {
+                    string name = el.Attribute("SITE.NAME")?.Value ?? string.Empty;
+                    string idStr = el.Attribute("SITE.ID")?.Value ?? "0";
+                    long.TryParse(idStr, out long siteId);
+                    if (!string.IsNullOrEmpty(name))
+                    {
+                        list.Add(new WebsiteInfo
+                        {
+                            SiteId = siteId,
+                            SiteName = name,
+                            State = el.Attribute("state")?.Value ?? el.Attribute("State")?.Value ?? "Started"
+                        });
+                    }
+                }
+            }
+        }
+        catch { }
 
         return list;
     }

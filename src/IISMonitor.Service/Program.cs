@@ -25,6 +25,12 @@ using Microsoft.Extensions.Logging;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Configure Minimal APIs JSON serialization to preserve PascalCase property names
+builder.Services.ConfigureHttpJsonOptions(options =>
+{
+    options.SerializerOptions.PropertyNamingPolicy = null;
+});
+
 // 1. Windows Service hosting support per Section 2
 builder.Host.UseWindowsService(options =>
 {

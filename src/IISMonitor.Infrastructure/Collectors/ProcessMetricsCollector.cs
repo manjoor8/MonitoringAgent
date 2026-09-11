@@ -47,38 +47,55 @@ public class ProcessMetricsCollector : IProcessMetricsCollector
 
             try
             {
-                string processName = p.ProcessName;
-                TimeSpan currentCpuTime = p.TotalProcessorTime;
+                string processName;
+                try
+                {
+                    processName = p.ProcessName;
+                }
+                catch
+                {
+                    continue;
+                }
+
+                TimeSpan currentCpuTime = TimeSpan.Zero;
+                bool cpuAccessible = false;
+                try
+                {
+                    currentCpuTime = p.TotalProcessorTime;
+                    cpuAccessible = true;
+                }
+                catch
+                {
+                    // Access denied on certain system or protected processes
+                }
 
                 double cpuPercent = 0.0;
 
-                if (_snapshots.TryGetValue(pid, out var previous))
+                if (cpuAccessible)
                 {
-                    double cpuDeltaMs = (currentCpuTime - previous.CpuTime).TotalMilliseconds;
-                    double wallClockDeltaMs = Stopwatch.GetElapsedTime(previous.TimestampTicks, nowTicks).TotalMilliseconds;
-
-                    if (wallClockDeltaMs > 10.0)
+                    if (_snapshots.TryGetValue(pid, out var previous))
                     {
-                        cpuPercent = (cpuDeltaMs / (wallClockDeltaMs * processorCount)) * 100.0;
-                        cpuPercent = Math.Clamp(cpuPercent, 0.0, 100.0);
+                        double cpuDeltaMs = (currentCpuTime - previous.CpuTime).TotalMilliseconds;
+                        double wallClockDeltaMs = Stopwatch.GetElapsedTime(previous.TimestampTicks, nowTicks).TotalMilliseconds;
+
+                        if (wallClockDeltaMs > 10.0)
+                        {
+                            cpuPercent = (cpuDeltaMs / (wallClockDeltaMs * processorCount)) * 100.0;
+                            cpuPercent = Math.Clamp(cpuPercent, 0.0, 100.0);
+                        }
+
+                        previous.CpuTime = currentCpuTime;
+                        previous.TimestampTicks = nowTicks;
                     }
-
-                    previous.CpuTime = currentCpuTime;
-                    previous.TimestampTicks = nowTicks;
-                }
-                else
-                {
-                    _snapshots[pid] = new ProcessSnapshot
+                    else
                     {
-                        CpuTime = currentCpuTime,
-                        TimestampTicks = nowTicks
-                    };
+                        _snapshots[pid] = new ProcessSnapshot
+                        {
+                            CpuTime = currentCpuTime,
+                            TimestampTicks = nowTicks
+                        };
+                    }
                 }
-
-                // Filter: Collect w3wp, security processes, system, or processes consuming CPU (> 0.5%)
-                bool isW3wp = string.Equals(processName, "w3wp", StringComparison.OrdinalIgnoreCase);
-                bool isSecurity = string.Equals(processName, "MsMpEng", StringComparison.OrdinalIgnoreCase) ||
-                                  processName.Contains("Defender", StringComparison.OrdinalIgnoreCase);
 
                 long privateBytes = 0;
                 long workingSet = 0;
