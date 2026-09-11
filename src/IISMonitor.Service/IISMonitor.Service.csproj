@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <OutputType>Exe</OutputType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\IISMonitor.Core\IISMonitor.Core.csproj" />
+    <ProjectReference Include="..\IISMonitor.Infrastructure\IISMonitor.Infrastructure.csproj" />
+    <ProjectReference Include="..\IISMonitor.Data\IISMonitor.Data.csproj" />
+    <ProjectReference Include="..\IISMonitor.Web\IISMonitor.Web.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="8.0.0" />
+  </ItemGroup>
+
+</Project>

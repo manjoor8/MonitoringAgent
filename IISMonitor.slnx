@@ -1,0 +1,13 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/IISMonitor.Core/IISMonitor.Core.csproj" />
+    <Project Path="src/IISMonitor.Data/IISMonitor.Data.csproj" />
+    <Project Path="src/IISMonitor.Infrastructure/IISMonitor.Infrastructure.csproj" />
+    <Project Path="src/IISMonitor.Service/IISMonitor.Service.csproj" />
+    <Project Path="src/IISMonitor.Web/IISMonitor.Web.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/IISMonitor.IntegrationTests/IISMonitor.IntegrationTests.csproj" />
+    <Project Path="tests/IISMonitor.UnitTests/IISMonitor.UnitTests.csproj" />
+  </Folder>
+</Solution>

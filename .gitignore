@@ -1,0 +1,30 @@
+## Visual Studio / .NET
+[Bb]in/
+[Oo]bj/
+publish/
+*.user
+*.userosscache
+*.sln.docstates
+.vs/
+*.suo
+*.userprefs
+
+## Build & Test Results
+[Tt]est[Rr]esult*/
+[Bb]uild[Ll]og.*
+*.trx
+
+## SQLite & Monitoring Agent local data
+*.db
+*.db-wal
+*.db-shm
+*.dmp
+C:/ProgramData/IISMonitor/
+
+## Logs
+logs/
+*.log
+
+## OS Files
+.DS_Store
+Thumbs.db

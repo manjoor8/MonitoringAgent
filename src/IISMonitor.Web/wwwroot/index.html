@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>IIS Root-Cause Monitoring Agent</title>
+  <link rel="stylesheet" href="css/dashboard.css">
+</head>
+<body>
+
+  <!-- Top Navigation Header -->
+  <header>
+    <div class="brand">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2">
+        <rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect>
+        <rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect>
+        <line x1="6" y1="6" x2="6.01" y2="6"></line>
+        <line x1="6" y1="18" x2="6.01" y2="18"></line>
+      </svg>
+      <h1>IIS Root-Cause Monitor</h1>
+      <span class="badge-server" id="dash-server-name">SERVER</span>
+      <span class="badge badge-blue" id="dash-server-badge">PROD</span>
+    </div>
+    <nav>
+      <a href="#dashboard" class="nav-link active" data-tab="dashboard">Live Dashboard</a>
+      <a href="#incidents" class="nav-link" data-tab="incidents">Incidents</a>
+      <a href="#config" class="nav-link" data-tab="config">Configuration</a>
+    </nav>
+  </header>
+
+  <div class="container">
+
+    <!-- 1. LIVE DASHBOARD VIEW -->
+    <div id="view-dashboard" class="tab-view">
+      <div class="grid-cards">
+        <div class="card">
+          <div class="card-title">Server CPU</div>
+          <div class="card-value" id="dash-cpu-val">0.0%</div>
+          <div class="progress-bar-bg">
+            <div id="dash-cpu-fill" class="progress-bar-fill cpu-normal" style="width: 0%;"></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">Memory Committed</div>
+          <div class="card-value" id="dash-mem-val">0%</div>
+          <div class="card-subtitle">Committed / Available</div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">Monitoring State</div>
+          <div class="card-value" id="dash-state-badge" style="font-size: 20px;">-</div>
+          <div class="card-subtitle">Automatic state machine</div>
+        </div>
+      </div>
+
+      <!-- Live Timeline Chart -->
+      <div class="section">
+        <div class="section-header">
+          <div class="section-title">Rolling Baseline CPU Timeline (60 Minutes)</div>
+          <div style="font-size:12px; color:var(--text-muted);">Thresholds: 70% Incident | 90% Critical</div>
+        </div>
+        <div class="chart-container">
+          <canvas id="dashboard-chart"></canvas>
+        </div>
+      </div>
+
+      <!-- Top Processes & App Pools -->
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+        <div class="section">
+          <div class="section-header">
+            <div class="section-title">Top Processes by CPU</div>
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th>PID</th>
+                <th>Process</th>
+                <th>CPU %</th>
+                <th>Memory</th>
+                <th>Threads</th>
+              </tr>
+            </thead>
+            <tbody id="dash-processes-tbody"></tbody>
+          </table>
+        </div>
+
+        <div class="section">
+          <div class="section-header">
+            <div class="section-title">Top IIS Application Pools</div>
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th>AppPool</th>
+                <th>PID</th>
+                <th>CPU %</th>
+                <th>Memory</th>
+                <th>Threads</th>
+              </tr>
+            </thead>
+            <tbody id="dash-pools-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- 2. INCIDENTS LIST VIEW -->
+    <div id="view-incidents" class="tab-view" style="display: none;">
+      <div class="section">
+        <div class="section-header">
+          <div class="section-title">Recorded CPU Incidents</div>
+          <button class="btn btn-secondary" onclick="Incidents.load()">Refresh</button>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>Incident ID</th>
+              <th>Server</th>
+              <th>Start Time</th>
+              <th>Duration</th>
+              <th>Peak CPU</th>
+              <th>Top Process</th>
+              <th>Top AppPool</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody id="incidents-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- 3. INCIDENT DETAIL INVESTIGATION VIEW -->
+    <div id="view-incident-detail" class="tab-view" style="display: none;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+        <h2>Incident Investigation: <span id="inc-detail-id" class="mono" style="color:var(--accent-blue);">-</span></h2>
+        <a href="#incidents" class="btn btn-secondary">&larr; Back to Incidents</a>
+      </div>
+
+      <!-- Summary Card Grid -->
+      <div class="grid-cards">
+        <div class="card">
+          <div class="card-title">Server</div>
+          <div class="card-value" id="detail-server" style="font-size: 20px;">-</div>
+        </div>
+        <div class="card">
+          <div class="card-title">Peak CPU</div>
+          <div class="card-value" id="detail-peak-cpu" style="color:var(--accent-red);">-</div>
+        </div>
+        <div class="card">
+          <div class="card-title">Duration</div>
+          <div class="card-value" id="detail-duration" style="font-size: 20px;">-</div>
+        </div>
+        <div class="card">
+          <div class="card-title">Primary Process</div>
+          <div class="card-value" id="detail-top-proc" style="font-size: 16px;">-</div>
+        </div>
+        <div class="card">
+          <div class="card-title">Primary AppPool</div>
+          <div class="card-value" id="detail-top-pool" style="font-size: 16px; color:var(--accent-blue);">-</div>
+        </div>
+        <div class="card">
+          <div class="card-title">Status</div>
+          <div class="card-value" id="detail-status" style="font-size: 16px;">-</div>
+        </div>
+      </div>
+
+      <!-- Timeline Chart -->
+      <div class="section">
+        <div class="section-header">
+          <div class="section-title">Incident CPU Profile (Baseline &rarr; Spike &rarr; Peak &rarr; Recovery)</div>
+        </div>
+        <div class="chart-container">
+          <canvas id="incident-cpu-chart"></canvas>
+        </div>
+      </div>
+
+      <!-- Root Cause Analysis & Fingerprint -->
+      <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 20px; margin-bottom: 24px;">
+        <div class="section">
+          <div class="section-header">
+            <div class="section-title">Automated Root Cause Evidence Summary (Section 33)</div>
+          </div>
+          <div id="inc-rootcause-container"></div>
+        </div>
+
+        <div class="section">
+          <div class="section-header">
+            <div class="section-title">Similar Incidents (Section 42)</div>
+          </div>
+          <div id="inc-similar-container"></div>
+          <div style="margin-top: 20px;">
+            <div class="section-title" style="margin-bottom: 8px;">Recovery Safeguard Audit</div>
+            <div id="inc-recovery-card"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- App Pool Ranking -->
+      <div class="section">
+        <div class="section-header">
+          <div class="section-title">Application Pool Ranking (Section 31)</div>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>Application Pool</th>
+              <th>Peak CPU</th>
+              <th>Avg CPU</th>
+              <th>PID</th>
+              <th>Max Memory</th>
+              <th>Max Threads</th>
+              <th>Max Queue</th>
+            </tr>
+          </thead>
+          <tbody id="inc-pools-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- 4. CONFIGURATION VIEW -->
+    <div id="view-config" class="tab-view" style="display: none;">
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px;">
+
+        <!-- Monitoring Settings -->
+        <div class="section">
+          <div class="section-header">
+            <div class="section-title">Monitoring Intervals & Thresholds</div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Normal Sampling Interval (Seconds)</label>
+            <input type="number" id="cfg-normal-interval" class="form-control" min="5" max="300">
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Incident High-Detail Interval (Seconds)</label>
+            <input type="number" id="cfg-incident-interval" class="form-control" min="1" max="60">
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">CPU Incident Threshold (%)</label>
+            <input type="number" id="cfg-cpu-threshold" class="form-control" min="50" max="95">
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Critical CPU Threshold (%)</label>
+            <input type="number" id="cfg-critical-threshold" class="form-control" min="80" max="100">
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Recovery Threshold (%)</label>
+            <input type="number" id="cfg-recovery-threshold" class="form-control" min="30" max="80">
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Recovery Consecutive Samples</label>
+            <input type="number" id="cfg-recovery-samples" class="form-control" min="1" max="10">
+          </div>
+
+          <button class="btn" onclick="Configuration.saveMonitoring()">Save Monitoring Settings</button>
+        </div>
+
+        <!-- Automatic Recovery Settings -->
+        <div class="section">
+          <div class="section-header">
+            <div class="section-title">Automatic Recovery Controls (Sections 51-64)</div>
+          </div>
+
+          <div class="warning-box">
+            <h4>OPERATIONAL WARNING</h4>
+            <p style="font-size:12px;">Automatic Recovery recycles IIS Application Pools when sustained critical CPU conditions are detected. Must be validated first.</p>
+          </div>
+
+          <div class="form-group" style="display:flex; align-items:center; gap:10px;">
+            <input type="checkbox" id="cfg-recovery-enabled" style="width:18px;height:18px;">
+            <label for="cfg-recovery-enabled" style="font-weight:600;">Enable Automatic Recovery (Default: Disabled)</label>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Critical Server CPU (%)</label>
+            <input type="number" id="cfg-rec-critical-cpu" class="form-control" min="80" max="100">
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Required Sustained Duration (Minutes)</label>
+            <input type="number" id="cfg-rec-duration" class="form-control" min="1" max="30">
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Minimum Culprit w3wp CPU (%)</label>
+            <input type="number" id="cfg-rec-culprit-cpu" class="form-control" min="50" max="100">
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Maximum Restarts per Hour</label>
+            <input type="number" id="cfg-rec-max-hour" class="form-control" min="1" max="5">
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Maximum Restarts per Day</label>
+            <input type="number" id="cfg-rec-max-day" class="form-control" min="1" max="10">
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Cooldown Between Restarts (Minutes)</label>
+            <input type="number" id="cfg-rec-cooldown" class="form-control" min="5" max="120">
+          </div>
+
+          <div class="form-group" style="display:flex; align-items:center; gap:10px; margin-top:16px;">
+            <input type="checkbox" id="cfg-rec-confirm" style="width:18px;height:18px;">
+            <label for="cfg-rec-confirm" style="font-size:12px; color:var(--text-secondary);">I confirm that I understand this allows automated recycling of culprit IIS Application Pools.</label>
+          </div>
+
+          <button class="btn btn-secondary" onclick="Configuration.saveRecovery()">Save Recovery Settings</button>
+        </div>
+
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Scripts -->
+  <script src="js/chart-renderer.js"></script>
+  <script src="js/app.js"></script>
+  <script src="js/dashboard.js"></script>
+  <script src="js/incidents.js"></script>
+  <script src="js/incident-detail.js"></script>
+  <script src="js/configuration.js"></script>
+</body>
+</html>
