@@ -3,6 +3,8 @@
 [Oo]bj/
 publish/
 publish-singlefile/
+dist/
+*.zip
 *.user
 *.userosscache
 *.sln.docstates
