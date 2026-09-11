@@ -47,6 +47,14 @@ builder.WebHost.ConfigureKestrel(serverOptions =>
 var config = builder.Configuration;
 
 var serverIdentity = config.GetSection(ServerIdentity.SectionName).Get<ServerIdentity>() ?? new();
+if (string.IsNullOrWhiteSpace(serverIdentity.MachineName))
+{
+    serverIdentity.MachineName = Environment.MachineName;
+}
+if (string.IsNullOrWhiteSpace(serverIdentity.ServerId))
+{
+    serverIdentity.ServerId = Environment.MachineName.ToLowerInvariant();
+}
 var monitoringOptions = config.GetSection(MonitoringOptions.SectionName).Get<MonitoringOptions>() ?? new();
 var databaseOptions = config.GetSection(DatabaseOptions.SectionName).Get<DatabaseOptions>() ?? new();
 var diagnosticsOptions = config.GetSection(DiagnosticsOptions.SectionName).Get<DiagnosticsOptions>() ?? new();
