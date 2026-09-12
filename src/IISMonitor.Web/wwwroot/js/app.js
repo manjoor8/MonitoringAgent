@@ -69,6 +69,16 @@ const App = {
     if (s === 'critical') return '<span class="badge badge-critical">Critical</span>';
     if (s === 'recovery') return '<span class="badge badge-recovery">Recovery</span>';
     return `<span class="badge badge-blue">${state}</span>`;
+  },
+
+  getAssessmentBadge(assessment) {
+    if (!assessment) return '<span class="badge badge-blue">N/A</span>';
+    const a = assessment.toString().toLowerCase();
+    if (a.includes('strong')) return '<span class="badge badge-critical">Strong Correlation</span>';
+    if (a.includes('possible')) return '<span class="badge badge-warning">Possible</span>';
+    if (a.includes('unlikely')) return '<span class="badge badge-blue">Unlikely</span>';
+    if (a.includes('noevidence') || a.includes('none')) return '<span class="badge badge-normal">No Evidence</span>';
+    return `<span class="badge badge-blue">${assessment}</span>`;
   }
 };
 

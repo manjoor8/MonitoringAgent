@@ -49,9 +49,9 @@ const IncidentDetail = {
           const sm = s.ServerMetrics ?? s.serverMetrics ?? {};
           return {
             TimestampUtc: s.TimestampUtc ?? s.timestampUtc,
-            TotalCpu: sm.TotalCpuPercent ?? sm.totalCpuPercent ?? 0,
-            UserCpu: sm.UserCpuPercent ?? sm.userCpuPercent ?? 0,
-            PrivilegedCpu: sm.PrivilegedCpuPercent ?? sm.privilegedCpuPercent ?? 0
+            TotalCpu: s.TotalCpu ?? s.totalCpu ?? sm.TotalCpuPercent ?? sm.totalCpuPercent ?? 0,
+            UserCpu: s.UserCpu ?? s.userCpu ?? sm.UserCpuPercent ?? sm.userCpuPercent ?? 0,
+            PrivilegedCpu: s.PrivilegedCpu ?? s.privilegedCpu ?? sm.PrivilegedCpuPercent ?? sm.privilegedCpuPercent ?? 0
           };
         });
         this.cpuChart.setData(dataPoints, [
@@ -95,47 +95,55 @@ const IncidentDetail = {
         const container = document.getElementById('inc-rootcause-container');
         const primProc = rc.PrimaryProcessName ?? rc.primaryProcessName ?? '-';
         const primProcCpu = (rc.PrimaryProcessPeakCpu ?? rc.primaryProcessPeakCpu ?? 0).toFixed(1);
-        const primProcConf = rc.PrimaryProcessConfidence ?? rc.primaryProcessConfidence ?? '-';
+        const primProcConf = App.getAssessmentBadge(rc.PrimaryProcessConfidence ?? rc.primaryProcessConfidence);
         const primProcPid = rc.PrimaryProcessId ?? rc.primaryProcessId ?? 'N/A';
 
         const primPool = rc.PrimaryAppPoolName ?? rc.primaryAppPoolName ?? 'None identified';
         const primPoolCpu = (rc.PrimaryAppPoolPeakCpu ?? rc.primaryAppPoolPeakCpu ?? 0).toFixed(1);
-        const primPoolConf = rc.PrimaryAppPoolConfidence ?? rc.primaryAppPoolConfidence ?? '-';
+        const primPoolConf = App.getAssessmentBadge(rc.PrimaryAppPoolConfidence ?? rc.primaryAppPoolConfidence);
         const affectedWebsites = rc.AffectedWebsites ?? rc.affectedWebsites ?? [];
 
+        // Fallback update to top summary header if process/apppool was not resolved
+        if ((!topProc || topProc === '-' || topProc.startsWith('-')) && primProc !== '-') {
+          document.getElementById('detail-top-proc').innerText = `${primProc} (PID: ${primProcPid})`;
+        }
+        if ((!topPool || topPool === '-' || topPool.startsWith('-')) && primPool !== 'None identified') {
+          document.getElementById('detail-top-pool').innerText = primPool;
+        }
+
         const trafficSummary = rc.TrafficSummary ?? rc.trafficSummary ?? '';
-        const trafficAssess = rc.TrafficAssessment ?? rc.trafficAssessment ?? '';
+        const trafficAssess = App.getAssessmentBadge(rc.TrafficAssessment ?? rc.trafficAssessment);
         const secSummary = rc.SecuritySummary ?? rc.securitySummary ?? '';
-        const secAssess = rc.SecurityAssessment ?? rc.securityAssessment ?? '';
+        const secAssess = App.getAssessmentBadge(rc.SecurityAssessment ?? rc.securityAssessment);
         const schedTasks = rc.CorrelatedScheduledTasks ?? rc.correlatedScheduledTasks ?? [];
-        const schedAssess = rc.ScheduledTaskAssessment ?? rc.scheduledTaskAssessment ?? '';
+        const schedAssess = App.getAssessmentBadge(rc.ScheduledTaskAssessment ?? rc.scheduledTaskAssessment);
 
         container.innerHTML = `
           <div class="evidence-card">
             <div class="evidence-title">Primary CPU Consumer: ${primProc} (${primProcCpu}%)</div>
-            <div class="evidence-body">Assessment: <strong>${primProcConf}</strong>. PID: ${primProcPid}</div>
+            <div class="evidence-body">Assessment: ${primProcConf}. PID: ${primProcPid}</div>
           </div>
 
           <div class="evidence-card">
             <div class="evidence-title">Primary Application Pool: ${primPool} (${primPoolCpu}%)</div>
-            <div class="evidence-body">Assessment: <strong>${primPoolConf}</strong>. Associated Websites: ${affectedWebsites.join(', ') || 'None'}</div>
+            <div class="evidence-body">Assessment: ${primPoolConf}. Associated Websites: ${affectedWebsites.join(', ') || 'None'}</div>
           </div>
 
           <div class="evidence-card">
             <div class="evidence-title">Traffic & Request Correlation</div>
-            <div class="evidence-body">${trafficSummary} Assessment: <strong>${trafficAssess}</strong></div>
+            <div class="evidence-body">${trafficSummary} Assessment: ${trafficAssess}</div>
           </div>
 
           <div class="evidence-card">
             <div class="evidence-title">Antivirus / EDR (MsMpEng) Activity</div>
-            <div class="evidence-body">${secSummary} Assessment: <strong>${secAssess}</strong></div>
+            <div class="evidence-body">${secSummary} Assessment: ${secAssess}</div>
           </div>
 
           <div class="evidence-card">
             <div class="evidence-title">Correlated Scheduled Tasks</div>
             <div class="evidence-body">
               ${schedTasks.length > 0 ? schedTasks.join(', ') : 'No scheduled tasks running during CPU spike.'}
-              Assessment: <strong>${schedAssess}</strong>
+              Assessment: ${schedAssess}
             </div>
           </div>
         `;

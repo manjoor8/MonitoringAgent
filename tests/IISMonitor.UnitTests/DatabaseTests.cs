@@ -44,6 +44,132 @@ public class DatabaseTests
     }
 
     [Fact]
+    public async Task TestIncidentDetailQueries()
+    {
+        var dbPath = @"d:\Manjoor\Code\ServerAgent\db\monitor.db";
+        if (!System.IO.File.Exists(dbPath)) return;
+
+        var options = new DbContextOptionsBuilder<IISMonitorDbContext>()
+            .UseSqlite($"Data Source={dbPath};Mode=ReadOnly")
+            .Options;
+
+        var contextFactory = new TestDbContextFactory(options);
+        var repo = new IncidentRepository(contextFactory, new MonitoringOptions(), NullLogger<IncidentRepository>.Instance);
+        var incidentId = "INC-20260911-7755AD";
+
+        var inc = await repo.GetIncidentAsync(incidentId);
+        Assert.NotNull(inc);
+        Console.WriteLine($"TEST DURATION: Start={inc.StartTimeUtc:o}, End={inc.EndTimeUtc:o}, DurationSec={inc.DurationSeconds}, Status={inc.Status}");
+        Assert.Equal("CAR-WEB-14", inc.ServerName);
+        Assert.Equal("w3wp", inc.TopProcessName);
+        Assert.Equal("returnlonskyscanner.carltonleisure.com", inc.TopAppPoolName);
+        Assert.True(inc.PeakCpuPercent > 70);
+        Assert.True(inc.DurationSeconds > 0);
+
+        Console.WriteLine("2. Testing timeline query...");
+        try
+        {
+            using var ctx = contextFactory.CreateDbContext();
+            var samples = await ctx.MetricSamples.AsNoTracking()
+                .Where(m => m.IncidentId == incidentId)
+                .OrderBy(m => m.TimestampUtc)
+                .Select(m => new
+                {
+                    m.TimestampUtc,
+                    m.TotalCpu,
+                    m.UserCpu,
+                    m.PrivilegedCpu,
+                    m.ProcessorQueueLength,
+                    m.CommittedMemoryPercent,
+                    m.IsBaseline,
+                    m.IsHighDetail
+                })
+                .ToListAsync();
+            Console.WriteLine($"SAMPLES FOR INCIDENT: Count={samples.Count}, First={samples.FirstOrDefault()?.TimestampUtc:o}, Last={samples.LastOrDefault()?.TimestampUtc:o}");
+            var incidentSamples = await ctx.MetricSamples
+                .Where(s => s.TimestampUtc >= DateTime.Parse("2026-09-11T22:50:00Z") && s.TimestampUtc <= DateTime.Parse("2026-09-11T23:05:00Z"))
+                .OrderBy(s => s.TimestampUtc)
+                .ToListAsync();
+            Console.WriteLine($"SAMPLES AROUND INCIDENT ({incidentSamples.Count}):");
+            foreach (var s in incidentSamples.Take(20))
+            {
+                Console.WriteLine($"SAMPLE: Time={s.TimestampUtc:o}, TotalCpu={s.TotalCpu:F1}%, IncId='{s.IncidentId}', Baseline={s.IsBaseline}, HighDetail={s.IsHighDetail}");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Timeline query FAILED: {ex}");
+        }
+
+        Console.WriteLine("3. Testing apppools query...");
+        try
+        {
+            using var ctx = contextFactory.CreateDbContext();
+            var poolSummary = await ctx.ApplicationPoolSamples.AsNoTracking()
+                .Where(a => a.IncidentId == incidentId)
+                .GroupBy(a => a.AppPoolName)
+                .Select(g => new
+                {
+                    AppPoolName = g.Key,
+                    PeakCpu = g.Max(x => x.CpuPercent),
+                    AvgCpu = g.Average(x => x.CpuPercent),
+                    ProcessId = g.Select(x => x.ProcessId).FirstOrDefault(),
+                    MaxPrivateMemoryBytes = g.Max(x => x.PrivateMemory),
+                    MaxWorkingSetBytes = g.Max(x => x.WorkingSet),
+                    MaxThreadCount = g.Max(x => x.ThreadCount),
+                    MaxQueueLength = g.Max(x => x.QueueLength),
+                    SampleCount = g.Count()
+                })
+                .OrderByDescending(p => p.PeakCpu)
+                .ToListAsync();
+            Console.WriteLine($"AppPool summary: {poolSummary.Count}");
+            var json = System.Text.Json.JsonSerializer.Serialize(poolSummary.Take(2));
+            Console.WriteLine($"AppPool JSON sample: {json}");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"AppPool query FAILED: {ex}");
+        }
+
+        Console.WriteLine("4. Testing GenerateRootCauseEvidenceAsync...");
+        try
+        {
+            var evidence = await repo.GenerateRootCauseEvidenceAsync(incidentId);
+            Console.WriteLine($"RootCause: PrimProc={evidence.PrimaryProcessName} ({evidence.PrimaryProcessPeakCpu}%), PrimPool={evidence.PrimaryAppPoolName} ({evidence.PrimaryAppPoolPeakCpu}%)");
+            var json = System.Text.Json.JsonSerializer.Serialize(evidence);
+            Console.WriteLine($"RootCause JSON: {json}");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"GenerateRootCauseEvidenceAsync FAILED: {ex}");
+        }
+
+        Console.WriteLine("5. Testing FindSimilarIncidentsAsync...");
+        try
+        {
+            var similar = await repo.FindSimilarIncidentsAsync(incidentId);
+            Console.WriteLine($"Similar incidents: {similar.Count}");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"FindSimilarIncidentsAsync FAILED: {ex}");
+        }
+
+        Console.WriteLine("6. Testing recovery query...");
+        try
+        {
+            using var ctx = contextFactory.CreateDbContext();
+            var action = await ctx.RecoveryActions.AsNoTracking()
+                .FirstOrDefaultAsync(r => r.IncidentId == incidentId);
+            Console.WriteLine($"Recovery action: Found={action != null}");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Recovery query FAILED: {ex}");
+        }
+    }
+
+    [Fact]
     public async Task IncidentRepository_StartUpdateEndLifecycle()
     {
         var (factory, connection) = CreateSqliteInMemoryFactory();

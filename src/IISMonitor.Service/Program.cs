@@ -25,10 +25,11 @@ using Microsoft.Extensions.Logging;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Configure Minimal APIs JSON serialization to preserve PascalCase property names
+// Configure Minimal APIs JSON serialization to preserve PascalCase property names and enum strings
 builder.Services.ConfigureHttpJsonOptions(options =>
 {
     options.SerializerOptions.PropertyNamingPolicy = null;
+    options.SerializerOptions.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter());
 });
 
 // 1. Windows Service hosting support per Section 2

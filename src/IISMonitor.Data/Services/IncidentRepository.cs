@@ -143,17 +143,151 @@ public class IncidentRepository : IIncidentService
     public async Task<IncidentSummary?> GetIncidentAsync(string incidentId, CancellationToken cancellationToken = default)
     {
         await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
-        var entity = await context.Incidents.AsNoTracking().FirstOrDefaultAsync(i => i.IncidentId == incidentId, cancellationToken);
-        return entity == null ? null : ToModel(entity);
+        var entity = await context.Incidents.FirstOrDefaultAsync(i => i.IncidentId == incidentId, cancellationToken);
+        if (entity == null) return null;
+
+        bool updated = false;
+
+        // Augment TopProcessName and TopAppPoolName if empty from recorded samples
+        if (string.IsNullOrEmpty(entity.TopProcessName))
+        {
+            var topProc = await context.ProcessSamples.AsNoTracking()
+                .Where(p => p.IncidentId == incidentId)
+                .OrderByDescending(p => p.CpuPercent)
+                .FirstOrDefaultAsync(cancellationToken);
+            if (topProc != null)
+            {
+                entity.TopProcessName = topProc.ProcessName;
+                entity.TopProcessId = topProc.ProcessId;
+                entity.TopProcessPeakCpu = topProc.CpuPercent;
+                updated = true;
+            }
+        }
+
+        if (string.IsNullOrEmpty(entity.TopAppPoolName))
+        {
+            var topPool = await context.ApplicationPoolSamples.AsNoTracking()
+                .Where(a => a.IncidentId == incidentId)
+                .OrderByDescending(a => a.CpuPercent)
+                .FirstOrDefaultAsync(cancellationToken);
+            if (topPool != null)
+            {
+                entity.TopAppPoolName = topPool.AppPoolName;
+                entity.TopAppPoolPeakCpu = topPool.CpuPercent;
+                updated = true;
+            }
+        }
+
+        // Auto-close stale active incidents if no new samples have arrived in >10 minutes
+        if (entity.Status == "Active")
+        {
+            var lastSample = await context.MetricSamples.AsNoTracking()
+                .Where(s => s.IncidentId == incidentId)
+                .OrderByDescending(s => s.TimestampUtc)
+                .FirstOrDefaultAsync(cancellationToken);
+
+            if (lastSample != null && (DateTime.UtcNow - lastSample.TimestampUtc) > TimeSpan.FromMinutes(10))
+            {
+                entity.Status = "Recovered";
+                entity.EndTimeUtc = lastSample.TimestampUtc > entity.StartTimeUtc
+                    ? lastSample.TimestampUtc
+                    : entity.StartTimeUtc.AddSeconds(Math.Max(30, (entity.SampleCount > 0 ? entity.SampleCount : 1) * 30));
+                entity.DurationSeconds = Math.Max(1.0, (entity.EndTimeUtc.Value - entity.StartTimeUtc).TotalSeconds);
+
+                var allSamples = await context.MetricSamples.AsNoTracking()
+                    .Where(s => s.IncidentId == incidentId)
+                    .ToListAsync(cancellationToken);
+
+                if (allSamples.Count > 0)
+                {
+                    entity.SampleCount = allSamples.Count;
+                    entity.PeakCpu = allSamples.Max(s => s.TotalCpu);
+                    entity.AverageCpu = allSamples.Average(s => s.TotalCpu);
+                }
+
+                updated = true;
+            }
+        }
+
+        if (updated)
+        {
+            try
+            {
+                await context.SaveChangesAsync(cancellationToken);
+            }
+            catch { }
+        }
+
+        return ToModel(entity);
     }
 
     public async Task<IReadOnlyList<IncidentSummary>> GetIncidentsAsync(int take = 50, CancellationToken cancellationToken = default)
     {
         await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
-        var entities = await context.Incidents.AsNoTracking()
+        var entities = await context.Incidents
             .OrderByDescending(i => i.StartTimeUtc)
             .Take(take)
             .ToListAsync(cancellationToken);
+
+        bool changes = false;
+        foreach (var entity in entities)
+        {
+            if (string.IsNullOrEmpty(entity.TopProcessName))
+            {
+                var topProc = await context.ProcessSamples.AsNoTracking()
+                    .Where(p => p.IncidentId == entity.IncidentId)
+                    .OrderByDescending(p => p.CpuPercent)
+                    .FirstOrDefaultAsync(cancellationToken);
+                if (topProc != null)
+                {
+                    entity.TopProcessName = topProc.ProcessName;
+                    entity.TopProcessId = topProc.ProcessId;
+                    entity.TopProcessPeakCpu = topProc.CpuPercent;
+                    changes = true;
+                }
+            }
+
+            if (string.IsNullOrEmpty(entity.TopAppPoolName))
+            {
+                var topPool = await context.ApplicationPoolSamples.AsNoTracking()
+                    .Where(a => a.IncidentId == entity.IncidentId)
+                    .OrderByDescending(a => a.CpuPercent)
+                    .FirstOrDefaultAsync(cancellationToken);
+                if (topPool != null)
+                {
+                    entity.TopAppPoolName = topPool.AppPoolName;
+                    entity.TopAppPoolPeakCpu = topPool.CpuPercent;
+                    changes = true;
+                }
+            }
+
+            if (entity.Status == "Active")
+            {
+                var lastSample = await context.MetricSamples.AsNoTracking()
+                    .Where(s => s.IncidentId == entity.IncidentId)
+                    .OrderByDescending(s => s.TimestampUtc)
+                    .FirstOrDefaultAsync(cancellationToken);
+
+                if (lastSample != null && (DateTime.UtcNow - lastSample.TimestampUtc) > TimeSpan.FromMinutes(10))
+                {
+                    entity.Status = "Recovered";
+                    entity.EndTimeUtc = lastSample.TimestampUtc > entity.StartTimeUtc
+                        ? lastSample.TimestampUtc
+                        : entity.StartTimeUtc.AddSeconds(Math.Max(30, (entity.SampleCount > 0 ? entity.SampleCount : 1) * 30));
+                    entity.DurationSeconds = Math.Max(1.0, (entity.EndTimeUtc.Value - entity.StartTimeUtc).TotalSeconds);
+                    changes = true;
+                }
+            }
+        }
+
+        if (changes)
+        {
+            try
+            {
+                await context.SaveChangesAsync(cancellationToken);
+            }
+            catch { }
+        }
 
         return entities.Select(ToModel).ToList();
     }
@@ -320,6 +454,11 @@ public class IncidentRepository : IIncidentService
         ServerName = e.ServerName,
         StartTimeUtc = e.StartTimeUtc,
         EndTimeUtc = e.EndTimeUtc,
+        DurationSeconds = e.DurationSeconds > 0
+            ? e.DurationSeconds
+            : (e.EndTimeUtc.HasValue && e.EndTimeUtc.Value > e.StartTimeUtc
+                ? (e.EndTimeUtc.Value - e.StartTimeUtc).TotalSeconds
+                : Math.Max(1.0, (DateTime.UtcNow - e.StartTimeUtc).TotalSeconds)),
         PeakCpuPercent = e.PeakCpu,
         AverageCpuPercent = e.AverageCpu,
         TriggerThresholdPercent = e.TriggerThreshold,

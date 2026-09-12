@@ -11,7 +11,12 @@ public record IncidentSummary
     public string ServerName { get; init; } = Environment.MachineName;
     public DateTime StartTimeUtc { get; init; }
     public DateTime? EndTimeUtc { get; init; }
-    public TimeSpan Duration => (EndTimeUtc ?? DateTime.UtcNow) - StartTimeUtc;
+    public double DurationSeconds { get; init; }
+    public TimeSpan Duration => DurationSeconds > 0
+        ? TimeSpan.FromSeconds(DurationSeconds)
+        : ((EndTimeUtc ?? DateTime.UtcNow) > StartTimeUtc
+            ? (EndTimeUtc ?? DateTime.UtcNow) - StartTimeUtc
+            : TimeSpan.FromSeconds(1));
     public double PeakCpuPercent { get; init; }
     public double AverageCpuPercent { get; init; }
     public double TriggerThresholdPercent { get; init; }
