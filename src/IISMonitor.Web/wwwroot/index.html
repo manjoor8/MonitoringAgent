@@ -138,30 +138,38 @@
       </div>
 
       <!-- Summary Card Grid -->
-      <div class="grid-cards">
+      <div class="grid-cards" style="grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));">
         <div class="card">
           <div class="card-title">Server</div>
-          <div class="card-value" id="detail-server" style="font-size: 20px;">-</div>
+          <div class="card-value" id="detail-server" style="font-size: 18px;">-</div>
+        </div>
+        <div class="card">
+          <div class="card-title">Start Time</div>
+          <div class="card-value" id="detail-start" style="font-size: 13px;">-</div>
+        </div>
+        <div class="card">
+          <div class="card-title">End Time</div>
+          <div class="card-value" id="detail-end" style="font-size: 13px;">-</div>
         </div>
         <div class="card">
           <div class="card-title">Peak CPU</div>
-          <div class="card-value" id="detail-peak-cpu" style="color:var(--accent-red);">-</div>
+          <div class="card-value" id="detail-peak-cpu" style="color:var(--accent-red); font-size: 18px;">-</div>
         </div>
         <div class="card">
           <div class="card-title">Duration</div>
-          <div class="card-value" id="detail-duration" style="font-size: 20px;">-</div>
+          <div class="card-value" id="detail-duration" style="font-size: 18px;">-</div>
         </div>
         <div class="card">
           <div class="card-title">Primary Process</div>
-          <div class="card-value" id="detail-top-proc" style="font-size: 16px;">-</div>
+          <div class="card-value" id="detail-top-proc" style="font-size: 14px;">-</div>
         </div>
         <div class="card">
           <div class="card-title">Primary AppPool</div>
-          <div class="card-value" id="detail-top-pool" style="font-size: 16px; color:var(--accent-blue);">-</div>
+          <div class="card-value" id="detail-top-pool" style="font-size: 14px; color:var(--accent-blue); word-break: break-all;">-</div>
         </div>
         <div class="card">
           <div class="card-title">Status</div>
-          <div class="card-value" id="detail-status" style="font-size: 16px;">-</div>
+          <div class="card-value" id="detail-status" style="font-size: 14px;">-</div>
         </div>
       </div>
 
@@ -321,11 +329,11 @@
   </div>
 
   <!-- Scripts -->
-  <script src="js/chart-renderer.js?v=1.1"></script>
-  <script src="js/app.js?v=1.1"></script>
-  <script src="js/dashboard.js?v=1.1"></script>
-  <script src="js/incidents.js?v=1.1"></script>
-  <script src="js/incident-detail.js?v=1.1"></script>
-  <script src="js/configuration.js?v=1.1"></script>
+  <script src="js/chart-renderer.js?v=1.2"></script>
+  <script src="js/app.js?v=1.2"></script>
+  <script src="js/dashboard.js?v=1.2"></script>
+  <script src="js/incidents.js?v=1.2"></script>
+  <script src="js/incident-detail.js?v=1.2"></script>
+  <script src="js/configuration.js?v=1.2"></script>
 </body>
 </html>
