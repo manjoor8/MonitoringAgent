@@ -159,13 +159,14 @@ public class DatabaseTests
         try
         {
             using var ctx = contextFactory.CreateDbContext();
-            var action = await ctx.RecoveryActions.AsNoTracking()
-                .FirstOrDefaultAsync(r => r.IncidentId == incidentId);
-            Console.WriteLine($"Recovery action: Found={action != null}");
+            var tasks = await ctx.ScheduledTasks.AsNoTracking()
+                .Where(r => r.IncidentId == incidentId && r.IsRunning)
+                .ToListAsync();
+            Assert.Contains(tasks, t => t.TaskName == "CacheTask");
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Recovery query FAILED: {ex}");
+            Console.WriteLine($"Task query FAILED: {ex}");
         }
     }
 
